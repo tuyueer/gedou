@@ -2,12 +2,13 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>像素格斗王 PIXEL FIGHTERS</title>
 <style>
   /* 页面样式：黑底居中画布，保持像素锐利 */
   html,body{height:100%;margin:0;background:#05050c;overflow:hidden}
   body{display:flex;align-items:center;justify-content:center}
-  canvas{image-rendering:pixelated;image-rendering:crisp-edges;background:#000}
+  canvas{image-rendering:pixelated;image-rendering:crisp-edges;background:#000;touch-action:none}
 </style>
 </head>
 <body>
@@ -157,6 +158,76 @@ addEventListener('keydown',e=>{
   keys[code]=true;});
 // 键盘抬起事件
 addEventListener('keyup',e=>{keys[normCode(e)]=false;});
+
+// ==================== 触屏虚拟操控（移动端） ====================
+// 触屏检测：支持触摸的设备启用虚拟摇杆与虚拟按键（与键盘共用 keys/pressed，战斗与联机零改动）
+const TOUCH=('ontouchstart' in window)||navigator.maxTouchPoints>0;
+// 虚拟按键布局（画布坐标，右下弧形排列）：U 轻腿 / I 重腿 / J 轻拳 / K 重拳
+const TBTNS=[
+  {code:'KeyU',zh:'轻腿',x:648,y:352,r:42},
+  {code:'KeyI',zh:'重腿',x:792,y:326,r:42},
+  {code:'KeyJ',zh:'轻拳',x:672,y:456,r:44},
+  {code:'KeyK',zh:'重拳',x:816,y:434,r:44}];
+// 右上角返回按钮（房间等待/房间码输入/选人界面显示，等效 ESC）
+const TBACK={x:918,y:40,r:26};
+// 触控状态：浮动摇杆（sid 触点标识 / sx sy 原点 / dx dy 偏移）+ 按键触点映射（bids: 触点id→键码）
+const T={sid:null,sx:0,sy:0,dx:0,dy:0,dirs:{},bids:{}};
+// 触摸点坐标换算为画布坐标（960x540）
+function tXY(t){const r=cv.getBoundingClientRect();
+  return{x:(t.clientX-r.left)/r.width*W,y:(t.clientY-r.top)/r.height*H};}
+// 模拟方向键置位：方向从无到有的瞬间注入 pressed（复刻键盘按下行为，菜单导航同样生效）
+function setDir(code,on){
+  if(on&&!T.dirs[code])pressed[code]=true;
+  T.dirs[code]=on;keys[code]=on;
+}
+// 虚拟按键命中检测
+function hitBtn(x,y){
+  for(const b of TBTNS)if((x-b.x)*(x-b.x)+(y-b.y)*(y-b.y)<=b.r*b.r)return b;
+  return null;
+}
+// 触屏按下：解锁音频 / 命中虚拟按键 / 左半屏生成浮动摇杆 / 标题与胜利界面任意点继续
+cv.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  AU.init();if(AU.ctx&&AU.ctx.state==='suspended')AU.ctx.resume();
+  for(const t of e.changedTouches){
+    const{x,y}=tXY(t);
+    // 标题/胜利画面：任意触摸 = 按任意键
+    if(game.state==='title'||game.state==='victory'){pressed.Enter=true;continue;}
+    // 命中虚拟按键（仅在显示控件的界面生效，避免 VS 过场等误触）
+    const b=(game.state==='fight'||game.state==='mode'||game.state==='guest'||game.state==='select')?hitBtn(x,y):null;
+    if(b){T.bids[t.identifier]=b.code;keys[b.code]=true;pressed[b.code]=true;continue;}
+    // 命中右上角返回键（等效 ESC）
+    if((game.state==='host'||game.state==='guest'||game.state==='select')
+      &&(x-TBACK.x)*(x-TBACK.x)+(y-TBACK.y)*(y-TBACK.y)<=TBACK.r*TBACK.r){pressed.Escape=true;continue;}
+    // 左半屏 → 浮动摇杆（手指按下的位置即摇杆原点）
+    if(T.sid===null&&x<W*0.5){T.sid=t.identifier;T.sx=x;T.sy=y;T.dx=T.dy=0;}
+  }
+},{passive:false});
+// 触屏移动：更新摇杆偏移，超过阈值判定方向（斜向=两向同时成立，天然 8 方向）
+cv.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  for(const t of e.changedTouches){
+    if(t.identifier===T.sid){
+      const{x,y}=tXY(t);
+      T.dx=x-T.sx;T.dy=y-T.sy;
+      const th=22;
+      setDir('KeyA',T.dx<-th);setDir('KeyD',T.dx>th);
+      setDir('KeyW',T.dy<-th);setDir('KeyS',T.dy>th);
+    }
+  }
+},{passive:false});
+// 触屏抬起/系统中断：释放摇杆方向与虚拟按键
+function touchEnd(e){
+  e.preventDefault();
+  for(const t of e.changedTouches){
+    if(t.identifier===T.sid){T.sid=null;T.dx=T.dy=0;
+      setDir('KeyA',false);setDir('KeyD',false);setDir('KeyW',false);setDir('KeyS',false);}
+    const c=T.bids[t.identifier];
+    if(c){keys[c]=false;delete T.bids[t.identifier];}
+  }
+}
+cv.addEventListener('touchend',touchEnd,{passive:false});
+cv.addEventListener('touchcancel',touchEnd,{passive:false});
 // 读取某玩家本帧输入（联机时主机 P2 读网络输入；客机始终读 P1 键位）
 function readInput(p){
   if(NET.mode==='guest')p=1;
@@ -1222,15 +1293,22 @@ function renderTitle(){
   // 六角色剪影
   CHARS.forEach((c,i)=>{ctx.save();ctx.translate(160+i*128,H-190);ctx.scale(0.85,0.85);
     drawSkeleton(POSES[i%2?'idle2':'stance'],c,frameNo+i*20);ctx.restore();});
-  if(frameNo%60<40)drawCText('按 任意键 继续',480,330,26,'#fff');
+  if(frameNo%60<40)drawCText(TOUCH?'触摸屏幕开始':'按 任意键 继续',480,330,26,'#fff');
   // 断线提示
   if(NET.err)drawCText(NET.err+'（按任意键关闭）',480,300,20,'#ff5040');
-  // 操作说明
+  // 操作说明（触屏设备显示触屏版键位）
   ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fillRect(60,356,840,150);
-  drawCText('P1：WASD 移动/跳/蹲   J 轻拳  K 重拳  U 轻脚  I 重脚',480,386,17,'#8fd0ff','center');
-  drawCText('P2：方向键 移动/跳/蹲   小键盘1/, 轻拳  2/. 重拳  4// 轻脚  5/右Shift 重脚',480,414,17,'#ffb0a0','center');
-  drawCText('搓招：↓↘→+拳(必杀1)  →↓↘+拳(必杀2)  ↓↙←+脚(必杀3)  ↓↘→↓↘→+拳(超必杀)',480,446,17,'#ffd54a','center');
-  drawCText('按住后退=格挡   能量满 100 可放超必杀   M 静音   P 暂停',480,476,15,'#aaa','center');
+  if(TOUCH){
+    drawCText('触屏操作：屏幕左半区 摇杆 移动/跳/蹲（按哪哪是中心）',480,386,17,'#8fd0ff','center');
+    drawCText('右下按键：轻拳  重拳  轻腿  重腿',480,414,17,'#ffb0a0','center');
+    drawCText('搓招：摇杆快速划出 ↓↘→ 再按拳 = 必杀技',480,446,17,'#ffd54a','center');
+    drawCText('摇杆拉住后方 = 格挡   能量满 100 可放超必杀',480,476,15,'#aaa','center');
+  }else{
+    drawCText('P1：WASD 移动/跳/蹲   J 轻拳  K 重拳  U 轻脚  I 重脚',480,386,17,'#8fd0ff','center');
+    drawCText('P2：方向键 移动/跳/蹲   小键盘1/, 轻拳  2/. 重拳  4// 轻脚  5/右Shift 重脚',480,414,17,'#ffb0a0','center');
+    drawCText('搓招：↓↘→+拳(必杀1)  →↓↘+拳(必杀2)  ↓↙←+脚(必杀3)  ↓↘→↓↘→+拳(超必杀)',480,446,17,'#ffd54a','center');
+    drawCText('按住后退=格挡   能量满 100 可放超必杀   M 静音   P 暂停',480,476,15,'#aaa','center');
+  }
 }
 // 标题更新
 function updateTitle(){
@@ -1264,7 +1342,7 @@ function renderMode(){
       if(frameNo%40<28)drawPText('>',208,y-14,3,'#ffd54a','left');}
     drawCText(s,480,y,sel?30:24,sel?'#ffd54a':'#889');
   });
-  drawCText('W/S 选择   J 确认',480,500,18,'#888');
+  drawCText(TOUCH?'摇杆 上下选择   右侧按键 确认':'W/S 选择   J 确认',480,500,18,'#888');
 }
 // 主机等待界面更新
 function updateHost(){
@@ -1289,7 +1367,7 @@ function renderHost(){
     if(frameNo%60<40)drawCText('等待对手加入…',480,340,26,'#ffd54a');
     drawCText('对手加入后将自动开始选人',480,384,18,'#889');
   }
-  drawCText('按 ESC 取消',480,500,16,'#888');
+  drawCText(TOUCH?'点 右上角 X 取消':'按 ESC 取消',480,500,16,'#888');
 }
 // 客机房间码输入更新：W/S 换字符，A/D 换位，J 确认
 function updateGuest(){
@@ -1322,8 +1400,8 @@ function renderGuest(){
     const ci=C.indexOf(NET.roomInput[NET.roomPos]);
     drawPText(C[(ci+C.length-1)%C.length]+' / '+C[(ci+1)%C.length],480+((NET.roomPos-2)*86),318,2,'#889','center');
   }
-  drawCText('W/S 换字符   A/D 换位   J 连接',480,500,17,'#888');
-  drawCText('按 ESC 取消',480,468,15,'#777');
+  drawCText(TOUCH?'摇杆 上下换字符   左右换位   按键 连接':'W/S 换字符   A/D 换位   J 连接',480,500,17,'#888');
+  drawCText(TOUCH?'点 右上角 X 取消':'按 ESC 取消',480,468,15,'#777');
 }
 
 // ==================== 选人画面 ====================
@@ -1356,7 +1434,7 @@ function renderSelect(){
   const show1=CHARS[game.locked1?game.p1sel:game.cur1];
   const show2=CHARS[game.locked2?game.p2sel:game.cur2];
   if(NET.mode){
-    drawCText('联机对战 · '+(NET.mode==='host'?'你是 1P（蓝框）':'你是 2P（红框）')+'   键位同 P1：WASD + J/K/U/I',480,494,15,'#ffd54a');
+    drawCText('联机对战 · '+(NET.mode==='host'?'你是 1P（蓝框）':'你是 2P（红框）')+(TOUCH?'   摇杆移动 + 按键出招':'   键位同 P1：WASD + J/K/U/I'),480,494,15,'#ffd54a');
     drawCText('你: '+((NET.mode==='host'?show1:show2).name)+'   [↓↘→+拳]'+((NET.mode==='host'?show1:show2).A.name+'   [→↓↘+拳]'+(NET.mode==='host'?show1:show2).B.name),480,516,15,NET.mode==='host'?'#8fd0ff':'#ffb0a0');
   }else{
     drawCText('P1: '+show1.name+'  [↓↘→+拳]'+show1.A.name+'  [→↓↘+拳]'+show1.B.name+'  [↓↙←+脚]'+show1.C.name,190,516,15,'#8fd0ff','left');
@@ -1536,6 +1614,54 @@ function updateNetFight(){
   MUSIC.tick();
 }
 
+// ==================== 触屏控件绘制 ====================
+// 绘制虚拟摇杆与虚拟按键（仅触屏设备）：战斗与操作界面显示摇杆+四键，房间/选人界面显示返回键
+function drawTouchUI(){
+  if(!TOUCH)return;
+  const st=game.state;
+  // 需要操控的界面：浮动摇杆（左）+ 四个动作键（右下）
+  if(st==='fight'||st==='mode'||st==='guest'||st==='select'){
+    const on=T.sid!==null;
+    const cx=on?T.sx:130,cy=on?T.sy:432;
+    // 摇杆底盘（活动时在触点处，静止时左下角虚影提示）
+    ctx.globalAlpha=on?0.55:0.25;
+    ctx.beginPath();ctx.arc(cx,cy,58,0,7);
+    ctx.fillStyle='#141428';ctx.fill();
+    ctx.lineWidth=3;ctx.strokeStyle='#3a3a60';ctx.stroke();
+    // 四向刻度点
+    ctx.fillStyle='#3a3a60';
+    [[0,-58],[0,58],[-58,0],[58,0]].forEach(p=>{
+      ctx.beginPath();ctx.arc(cx+p[0],cy+p[1],5,0,7);ctx.fill();});
+    // 摇杆球（跟随手指偏移，限制在底盘范围内）
+    const d=Math.min(Math.hypot(T.dx,T.dy),42),a=Math.atan2(T.dy,T.dx);
+    ctx.beginPath();ctx.arc(cx+Math.cos(a)*d,cy+Math.sin(a)*d,26,0,7);
+    ctx.fillStyle=on?'#ffd54a':'#4a4a70';ctx.fill();
+    ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,0.6)';ctx.stroke();
+    ctx.globalAlpha=1;
+    // 四个动作键（按下时高亮）
+    TBTNS.forEach(b=>{
+      const dn=keys[b.code];
+      ctx.globalAlpha=dn?0.85:0.4;
+      ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,7);
+      ctx.fillStyle=dn?'#b03030':'#20204a';ctx.fill();
+      ctx.lineWidth=3;ctx.strokeStyle=dn?'#ffd54a':'#4a4a80';ctx.stroke();
+      ctx.globalAlpha=dn?1:0.7;
+      drawCText(b.zh,b.x,b.y-9,16,'#fff');
+      ctx.globalAlpha=1;
+    });
+  }
+  // 房间等待/房间码输入/选人界面：右上角返回键
+  if(st==='host'||st==='guest'||st==='select'){
+    ctx.globalAlpha=0.55;
+    ctx.beginPath();ctx.arc(TBACK.x,TBACK.y,TBACK.r,0,7);
+    ctx.fillStyle='#301818';ctx.fill();
+    ctx.lineWidth=3;ctx.strokeStyle='#805050';ctx.stroke();
+    ctx.globalAlpha=0.9;
+    drawPText('X',TBACK.x,TBACK.y-10,3,'#ff8070','center');
+    ctx.globalAlpha=1;
+  }
+}
+
 // ==================== 主循环 ====================
 // 单帧逻辑更新
 function tick(){
@@ -1581,6 +1707,15 @@ function render(){
   if(flashWhite>0){ctx.fillStyle=`rgba(255,255,255,${flashWhite*0.15})`;ctx.fillRect(0,0,W,H);}
   // 静音提示
   if(AU.muted)drawPText('MUTE',930,522,2,'#666','right',false);
+  // 触屏虚拟控件层（移动端）
+  drawTouchUI();
+  // 竖屏提示（触屏设备）：请横屏游玩
+  if(TOUCH&&innerHeight>innerWidth){
+    ctx.fillStyle='rgba(5,5,14,0.9)';ctx.fillRect(0,0,W,H);
+    drawPText('ROTATE!',480,190,8,'#ffd54a','center');
+    drawCText('请 将 手 机 横 过 来',480,300,34,'#fff');
+    drawCText('横 屏 体 验 更 佳',480,350,20,'#889');
+  }
 }
 // 固定时间步主循环（支持慢动作）
 let last=0,acc=0;
