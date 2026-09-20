@@ -171,7 +171,7 @@ const TBTNS=[
 // 右上角返回按钮（房间等待/房间码输入/选人界面显示，等效 ESC）
 const TBACK={x:918,y:40,r:26};
 // 触控状态：浮动摇杆（sid 触点标识 / sx sy 原点 / dx dy 偏移）+ 按键触点映射（bids: 触点id→键码）
-const T={sid:null,sx:0,sy:0,dx:0,dy:0,dirs:{},bids:{}};
+const T={sid:null,sx:0,sy:0,dx:0,dy:0,dirs:{},bids:{},land:false};
 // 触摸点坐标换算为画布坐标（960x540）
 function tXY(t){const r=cv.getBoundingClientRect();
   return{x:(t.clientX-r.left)/r.width*W,y:(t.clientY-r.top)/r.height*H};}
@@ -191,6 +191,9 @@ cv.addEventListener('touchstart',e=>{
   AU.init();if(AU.ctx&&AU.ctx.state==='suspended')AU.ctx.resume();
   for(const t of e.changedTouches){
     const{x,y}=tXY(t);
+    // 竖屏提示层："直接开始"按钮（方向检测异常或系统锁定竖屏时的兜底入口）
+    if(TOUCH&&!T.land&&innerHeight>innerWidth&&x>260&&x<700&&y>400&&y<460){
+      T.land=true;pressed.Enter=true;continue;}
     // 标题/胜利画面：任意触摸 = 按任意键
     if(game.state==='title'||game.state==='victory'){pressed.Enter=true;continue;}
     // 命中虚拟按键（仅在显示控件的界面生效，避免 VS 过场等误触）
@@ -1709,12 +1712,17 @@ function render(){
   if(AU.muted)drawPText('MUTE',930,522,2,'#666','right',false);
   // 触屏虚拟控件层（移动端）
   drawTouchUI();
-  // 竖屏提示（触屏设备）：请横屏游玩
-  if(TOUCH&&innerHeight>innerWidth){
-    ctx.fillStyle='rgba(5,5,14,0.9)';ctx.fillRect(0,0,W,H);
-    drawPText('ROTATE!',480,190,8,'#ffd54a','center');
-    drawCText('请 将 手 机 横 过 来',480,300,34,'#fff');
-    drawCText('横 屏 体 验 更 佳',480,350,20,'#889');
+  // 竖屏提示（触屏设备）：请横屏游玩；方向锁定/检测异常时可点"直接开始"进入
+  if(TOUCH&&!T.land&&innerHeight>innerWidth){
+    ctx.fillStyle='rgba(5,5,14,0.92)';ctx.fillRect(0,0,W,H);
+    drawPText('ROTATE!',480,150,8,'#ffd54a','center');
+    drawCText('请 将 手 机 横 过 来',480,250,32,'#fff');
+    drawCText('横 屏 体 验 更 佳',480,298,18,'#889');
+    drawCText('若已横放仍显示此提示：请关闭系统的竖屏方向锁定',480,356,13,'#aa8866');
+    // "直接开始"兜底按钮
+    ctx.fillStyle='rgba(20,20,50,0.95)';ctx.fillRect(260,400,440,58);
+    ctx.lineWidth=3;ctx.strokeStyle='#8fd0ff';ctx.strokeRect(260,400,440,58);
+    drawCText('点 此 直 接 开 始',480,437,20,'#8fd0ff');
   }
 }
 // 固定时间步主循环（支持慢动作）
