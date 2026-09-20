@@ -13,6 +13,10 @@
 </head>
 <body>
 <canvas id="cv" width="960" height="540"></canvas>
+<!-- 移动端房间码输入框：点击房间码区域唤起系统软键盘（样式与游戏像素风一致） -->
+<input id="roomInp" maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false"
+  style="position:fixed;display:none;z-index:9;background:rgba(10,10,24,0.88);border:3px solid #ff6050;
+  color:#ffd54a;text-align:center;font:bold 26px monospace;letter-spacing:10px;border-radius:4px;outline:none;padding:0">
 <!-- PeerJS：浏览器 P2P 联机库（WebRTC DataChannel + 免费云信令） -->
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
@@ -194,6 +198,42 @@ function hitBtn(x,y){
   for(const b of TBTNS)if((x-b.x)*(x-b.x)+(y-b.y)*(y-b.y)<=b.r*b.r)return b;
   return null;
 }
+// 切换网页全屏（安卓：进入全屏后顺带锁定横屏；失败静默忽略）
+function toggleFs(){
+  try{
+    const de=document.documentElement;
+    if(document.fullscreenElement){document.exitFullscreen&&document.exitFullscreen();return;}
+    const r=de.requestFullscreen||de.webkitRequestFullscreen;
+    if(!r)return;
+    Promise.resolve(r.call(de)).then(()=>{
+      if(screen.orientation&&screen.orientation.lock)
+        screen.orientation.lock('landscape').catch(()=>{});
+    }).catch(()=>{});
+  }catch(_){}
+}
+// 房间码输入框（移动端）：点击房间码格子唤起系统软键盘直接输入，回车即连接
+const roomInp=document.getElementById('roomInp');
+// 输入框定位到画布房间码格子区域（画布坐标 → 屏幕坐标换算）
+function syncRoomInp(){
+  const r=cv.getBoundingClientRect();
+  roomInp.style.left=(r.left+r.width*(480-215)/W)+'px';
+  roomInp.style.top=(r.top+r.height*204/H)+'px';
+  roomInp.style.width=(r.width*430/W)+'px';
+  roomInp.style.height=(r.height*88/H)+'px';
+}
+// 输入内容实时同步到 NET.roomInput（自动大写，过滤易混淆字符）
+roomInp.addEventListener('input',()=>{
+  let v=roomInp.value.toUpperCase().replace(/[^A-Z2-9]/g,'')
+    .replace(/[0O]/g,'').replace(/[1I]/g,'').slice(0,5);
+  roomInp.value=v;
+  while(v.length<5)v+='A';
+  NET.roomInput=v.split('');
+  NET.roomPos=Math.min(4,roomInp.value.length);
+});
+// 软键盘回车 = 立即连接（模拟按 J）
+roomInp.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){e.preventDefault();roomInp.blur();pressed.KeyJ=true;}
+});
 // 触屏按下：解锁音频 / 命中虚拟按键 / 左半屏生成浮动摇杆 / 标题与胜利界面任意点继续
 cv.addEventListener('touchstart',e=>{
   e.preventDefault();
@@ -203,6 +243,10 @@ cv.addEventListener('touchstart',e=>{
     // 竖屏提示层："直接开始"按钮（方向检测异常或系统锁定竖屏时的兜底入口）
     if(TOUCH&&!T.land&&isPortrait()&&x>260&&x<700&&y>400&&y<460){
       T.land=true;pressed.Enter=true;continue;}
+    // 右上角全屏切换按钮（常驻，触屏设备）
+    if((x-852)*(x-852)+(y-40)*(y-40)<=24*24){toggleFs();continue;}
+    // 加入房间界面：点击房间码区域唤起系统键盘
+    if(game.state==='guest'&&x>255&&x<705&&y>196&&y<304){syncRoomInp();roomInp.focus();continue;}
     // 标题/胜利画面：任意触摸 = 按任意键
     if(game.state==='title'||game.state==='victory'){pressed.Enter=true;continue;}
     // 命中虚拟按键（仅在显示控件的界面生效，避免 VS 过场等误触）
@@ -1412,7 +1456,7 @@ function renderGuest(){
     const ci=C.indexOf(NET.roomInput[NET.roomPos]);
     drawPText(C[(ci+C.length-1)%C.length]+' / '+C[(ci+1)%C.length],480+((NET.roomPos-2)*86),318,2,'#889','center');
   }
-  drawCText(TOUCH?'摇杆 上下换字符   左右换位   按键 连接':'W/S 换字符   A/D 换位   J 连接',480,500,17,'#888');
+  drawCText(TOUCH?'点击房间码 直接键入   回车/按J 连接':'W/S 换字符   A/D 换位   J 连接',480,500,17,'#888');
   drawCText(TOUCH?'点 右上角 X 取消':'按 ESC 取消',480,468,15,'#777');
 }
 
@@ -1631,6 +1675,15 @@ function updateNetFight(){
 function drawTouchUI(){
   if(!TOUCH)return;
   const st=game.state;
+  // 右上角全屏切换按钮（常驻显示）
+  const fs=!!document.fullscreenElement;
+  ctx.globalAlpha=0.5;
+  ctx.beginPath();ctx.arc(852,40,24,0,7);
+  ctx.fillStyle='#102018';ctx.fill();
+  ctx.lineWidth=2.5;ctx.strokeStyle='#50a060';ctx.stroke();
+  ctx.globalAlpha=0.9;
+  drawCText(fs?'退出':'全屏',852,40,14,'#8fe8a0');
+  ctx.globalAlpha=1;
   // 需要操控的界面：浮动摇杆（左）+ 四个动作键（右下）
   if(st==='fight'||st==='mode'||st==='guest'||st==='select'){
     const on=T.sid!==null;
@@ -1719,6 +1772,11 @@ function render(){
   if(flashWhite>0){ctx.fillStyle=`rgba(255,255,255,${flashWhite*0.15})`;ctx.fillRect(0,0,W,H);}
   // 静音提示
   if(AU.muted)drawPText('MUTE',930,522,2,'#666','right',false);
+  // 房间码输入框：仅触屏设备在加入房间界面显示，位置随画布尺寸同步
+  if(TOUCH){
+    roomInp.style.display=game.state==='guest'?'block':'none';
+    if(game.state==='guest')syncRoomInp();
+  }
   // 触屏虚拟控件层（移动端）
   drawTouchUI();
   // 竖屏提示（触屏设备）：请横屏游玩；方向锁定/检测异常时可点"直接开始"进入
