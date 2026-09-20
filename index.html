@@ -175,6 +175,14 @@ const T={sid:null,sx:0,sy:0,dx:0,dy:0,dirs:{},bids:{},land:false};
 // 触摸点坐标换算为画布坐标（960x540）
 function tXY(t){const r=cv.getBoundingClientRect();
   return{x:(t.clientX-r.left)/r.width*W,y:(t.clientY-r.top)/r.height*H};}
+// 竖屏判定（宽松策略）：媒体查询/屏幕方向任一信号显示横屏即放行，规避部分安卓浏览器窗口尺寸不更新的问题
+function isPortrait(){
+  try{
+    if(window.matchMedia&&matchMedia('(orientation: landscape)').matches)return false;
+    if(window.screen&&screen.orientation&&Math.abs(screen.orientation.angle)===90)return false;
+  }catch(_){}
+  return innerHeight>innerWidth;
+}
 // 模拟方向键置位：方向从无到有的瞬间注入 pressed（复刻键盘按下行为，菜单导航同样生效）
 function setDir(code,on){
   if(on&&!T.dirs[code])pressed[code]=true;
@@ -192,7 +200,7 @@ cv.addEventListener('touchstart',e=>{
   for(const t of e.changedTouches){
     const{x,y}=tXY(t);
     // 竖屏提示层："直接开始"按钮（方向检测异常或系统锁定竖屏时的兜底入口）
-    if(TOUCH&&!T.land&&innerHeight>innerWidth&&x>260&&x<700&&y>400&&y<460){
+    if(TOUCH&&!T.land&&isPortrait()&&x>260&&x<700&&y>400&&y<460){
       T.land=true;pressed.Enter=true;continue;}
     // 标题/胜利画面：任意触摸 = 按任意键
     if(game.state==='title'||game.state==='victory'){pressed.Enter=true;continue;}
@@ -1713,7 +1721,7 @@ function render(){
   // 触屏虚拟控件层（移动端）
   drawTouchUI();
   // 竖屏提示（触屏设备）：请横屏游玩；方向锁定/检测异常时可点"直接开始"进入
-  if(TOUCH&&!T.land&&innerHeight>innerWidth){
+  if(TOUCH&&!T.land&&isPortrait()){
     ctx.fillStyle='rgba(5,5,14,0.92)';ctx.fillRect(0,0,W,H);
     drawPText('ROTATE!',480,150,8,'#ffd54a','center');
     drawCText('请 将 手 机 横 过 来',480,250,32,'#fff');
