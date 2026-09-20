@@ -163,12 +163,12 @@ addEventListener('keyup',e=>{keys[normCode(e)]=false;});
 // 触屏检测：支持触摸的设备启用虚拟摇杆与虚拟按键（与键盘共用 keys/pressed，战斗与联机零改动）
 const TOUCH=('ontouchstart' in window)||navigator.maxTouchPoints>0;
 // 虚拟按键布局（画布坐标，右下弧形排列）：U 轻腿 / I 重腿 / J 轻拳 / K 重拳
-// 尺寸加大并上移，避开全面屏手机底部手势条与右侧边缘区
+// 左右拉开间距并整体放大，更贴合双手拇指自然位置
 const TBTNS=[
-  {code:'KeyU',zh:'轻腿',x:600,y:300,r:52},
-  {code:'KeyI',zh:'重腿',x:742,y:268,r:52},
-  {code:'KeyJ',zh:'轻拳',x:626,y:414,r:55},
-  {code:'KeyK',zh:'重拳',x:772,y:378,r:55}];
+  {code:'KeyU',zh:'轻腿',x:566,y:296,r:58},
+  {code:'KeyI',zh:'重腿',x:756,y:254,r:58},
+  {code:'KeyJ',zh:'轻拳',x:586,y:424,r:60},
+  {code:'KeyK',zh:'重拳',x:790,y:380,r:60}];
 // 右上角返回按钮（房间等待/房间码输入/选人界面显示，等效 ESC）
 const TBACK={x:918,y:40,r:26};
 // 触控状态：浮动摇杆（sid 触点标识 / sx sy 原点 / dx dy 偏移）+ 按键触点映射（bids: 触点id→键码）
