@@ -163,11 +163,12 @@ addEventListener('keyup',e=>{keys[normCode(e)]=false;});
 // 触屏检测：支持触摸的设备启用虚拟摇杆与虚拟按键（与键盘共用 keys/pressed，战斗与联机零改动）
 const TOUCH=('ontouchstart' in window)||navigator.maxTouchPoints>0;
 // 虚拟按键布局（画布坐标，右下弧形排列）：U 轻腿 / I 重腿 / J 轻拳 / K 重拳
+// 尺寸加大并上移，避开全面屏手机底部手势条与右侧边缘区
 const TBTNS=[
-  {code:'KeyU',zh:'轻腿',x:648,y:352,r:42},
-  {code:'KeyI',zh:'重腿',x:792,y:326,r:42},
-  {code:'KeyJ',zh:'轻拳',x:672,y:456,r:44},
-  {code:'KeyK',zh:'重拳',x:816,y:434,r:44}];
+  {code:'KeyU',zh:'轻腿',x:600,y:300,r:52},
+  {code:'KeyI',zh:'重腿',x:742,y:268,r:52},
+  {code:'KeyJ',zh:'轻拳',x:626,y:414,r:55},
+  {code:'KeyK',zh:'重拳',x:772,y:378,r:55}];
 // 右上角返回按钮（房间等待/房间码输入/选人界面显示，等效 ESC）
 const TBACK={x:918,y:40,r:26};
 // 触控状态：浮动摇杆（sid 触点标识 / sx sy 原点 / dx dy 偏移）+ 按键触点映射（bids: 触点id→键码）
@@ -221,7 +222,7 @@ cv.addEventListener('touchmove',e=>{
     if(t.identifier===T.sid){
       const{x,y}=tXY(t);
       T.dx=x-T.sx;T.dy=y-T.sy;
-      const th=22;
+      const th=26;
       setDir('KeyA',T.dx<-th);setDir('KeyD',T.dx>th);
       setDir('KeyW',T.dy<-th);setDir('KeyS',T.dy>th);
     }
@@ -1633,19 +1634,19 @@ function drawTouchUI(){
   // 需要操控的界面：浮动摇杆（左）+ 四个动作键（右下）
   if(st==='fight'||st==='mode'||st==='guest'||st==='select'){
     const on=T.sid!==null;
-    const cx=on?T.sx:130,cy=on?T.sy:432;
+    const cx=on?T.sx:136,cy=on?T.sy:404;
     // 摇杆底盘（活动时在触点处，静止时左下角虚影提示）
     ctx.globalAlpha=on?0.55:0.25;
-    ctx.beginPath();ctx.arc(cx,cy,58,0,7);
+    ctx.beginPath();ctx.arc(cx,cy,66,0,7);
     ctx.fillStyle='#141428';ctx.fill();
     ctx.lineWidth=3;ctx.strokeStyle='#3a3a60';ctx.stroke();
     // 四向刻度点
     ctx.fillStyle='#3a3a60';
-    [[0,-58],[0,58],[-58,0],[58,0]].forEach(p=>{
+    [[0,-66],[0,66],[-66,0],[66,0]].forEach(p=>{
       ctx.beginPath();ctx.arc(cx+p[0],cy+p[1],5,0,7);ctx.fill();});
     // 摇杆球（跟随手指偏移，限制在底盘范围内）
-    const d=Math.min(Math.hypot(T.dx,T.dy),42),a=Math.atan2(T.dy,T.dx);
-    ctx.beginPath();ctx.arc(cx+Math.cos(a)*d,cy+Math.sin(a)*d,26,0,7);
+    const d=Math.min(Math.hypot(T.dx,T.dy),48),a=Math.atan2(T.dy,T.dx);
+    ctx.beginPath();ctx.arc(cx+Math.cos(a)*d,cy+Math.sin(a)*d,30,0,7);
     ctx.fillStyle=on?'#ffd54a':'#4a4a70';ctx.fill();
     ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,0.6)';ctx.stroke();
     ctx.globalAlpha=1;
@@ -1657,7 +1658,7 @@ function drawTouchUI(){
       ctx.fillStyle=dn?'#b03030':'#20204a';ctx.fill();
       ctx.lineWidth=3;ctx.strokeStyle=dn?'#ffd54a':'#4a4a80';ctx.stroke();
       ctx.globalAlpha=dn?1:0.7;
-      drawCText(b.zh,b.x,b.y-9,16,'#fff');
+      drawCText(b.zh,b.x,b.y-10,18,'#fff');
       ctx.globalAlpha=1;
     });
   }
